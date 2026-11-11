@@ -1,61 +1,183 @@
-# Demo Devices Template
+# OpenThread Border Router
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+An **OpenThread Border Router** (ot-br-posix) that already runs on your
+network, read by Gladys through its local REST API. Handy to see at a glance,
+or in a scene, that the Thread network of your home is up, which role the
+border router holds, and how many Thread routers it counts:
 
-## What you get
+- the border router becomes a Gladys device (Discovery tab): **Thread role**
+  (leader, router, child, detached or disabled), **Thread network up** (yes /
+  no: yes for leader, router or child), **Thread routers** (the routers of
+  the Thread partition the border router knows), **Thread network name**,
+  **Thread channel**, **Thread PAN ID**, **Thread extended PAN ID**, **Active
+  dataset present** (yes / no) and **Last action** (the outcome of the last
+  Thread action sent from Gladys);
+- two buttons of the configuration screen, **Disable Thread** and **Enable
+  Thread**, each one refused until you allow it.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+The Thread radio stays on the border router: Gladys never talks Thread
+itself, and never pairs a Thread device. Your Thread devices come into Gladys
+through **Matter** (the Matter service of Gladys), not through this
+integration.
+
+> **This integration has never been tested with a real border router.**
+> This first version follows the REST API of ot-br-posix (its `openapi.yaml`)
+> and the python-otbr-api library of Home Assistant; it was tested against a
+> fake server and against ot-br-posix run in Docker with a **simulated** Thread
+> radio (no real radio, no real Thread device). Tell on the Gladys forum what
+> works and what does not, with your border router (Home Assistant add-on,
+> Raspberry Pi, other).
+
+Unofficial integration, not affiliated with the OpenThread project nor
+Google.
+
+## Before you start
+
+1. The border router must run **ot-br-posix** with its **REST API** (port
+   **8081** by default, `--rest-listen-address` / `--rest-listen-port`). It
+   has no HTTPS and no login: keep it on your local network.
+2. **Home Assistant OS**: the "OpenThread Border Router" add-on serves the
+   REST API inside Home Assistant only; open its port **8081** in the
+   "Network" settings of the add-on to reach it from Gladys.
+3. **Raspberry Pi** or another Linux box: the REST API listens on the address
+   given to `otbr-agent` (`--rest-listen-address`); it must be one Gladys can
+   reach.
+4. Check it from a computer of the network: `http://<address>:8081/node`
+   must answer a small JSON with `"state"` (or `"State"`).
+
+Border routers whose REST API does not give their **border agent ID** (very
+old ot-br-posix) are refused: the device id is that ID, so that another
+border router answering at the same address is never taken for this one.
 
 ## Configuration
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+- **Address of the border router**: its local IP address (or host name),
+  with the port after a colon when it is not 8081 (`192.168.1.30:8081`,
+  `[fd00::30]:8081`). `http://` may be typed; `https://` is refused (the REST
+  API has none).
+- **Refresh**: 1, 5 (default), 15 or 30 minutes. The test button, a save of
+  the form, a reconnection to Gladys or a restart never read sooner (the time
+  of the last reading is kept in `/data`, when `/data` can be read); the end of a Thread action brings
+  one reading forward.
+- **Allow Thread actions** (off by default): see below.
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+## What is read
 
-## Actions
+Each reading is two requests, one after the other, each on its own
+connection, at most 5 seconds and 64 KB each:
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+- `GET /node`: the role, the routers, the border agent ID, and (when the
+  border router is attached) the network name and the extended PAN ID;
+- `GET /node/dataset/active`: the active dataset, of which **only** the
+  channel, the PAN ID, the extended PAN ID, the network name and its
+  timestamp are copied out. **The network key and the PSKc are never kept,
+  never logged, never shown, never published, never written to `/data`.**
+  A failure of this request leaves these values out of that reading (not
+  published); it never stops the reading.
 
-## Scenes
+A border router with Thread **disabled** or **detached** still answers its
+last network name in `/node` (often the default "OpenThread"): the name and
+the extended PAN ID of the active dataset are shown then. With no active
+dataset, "Active dataset present" is "no" and the channel, the PAN ID and the
+name stay unknown (never 0).
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+A value the border router does not give stays unknown in Gladys: it is never
+published as 0.
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+"Thread routers" is what the border router itself knows (the
+`routerCount` / `NumOfRouter` of `/node`), published only while it is attached
+(detached or disabled, that count is a leftover of its last partition: left
+unknown). The end devices (sleepy sensors,
+children) are not counted: counting them needs a network diagnostic sent to
+every node of the network, which wakes the battery devices; this first
+version does not send it.
 
-## Dashboard
+## Thread actions
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+**Disabling Thread on the border router cuts every Thread device of its
+network** (lights, sensors, locks, blinds reached through it) until Thread is
+enabled again. So:
 
-## Troubleshooting
+- both actions are **buttons of the configuration screen** of the
+  integration, never a feature of the device: no switch, no button in a
+  scene, no voice assistant and no "turn everything off" can reach them;
+- they are **refused** (nothing read, nothing sent) while **Allow Thread
+  actions** is off, which is the default;
+- **two clicks**: the first click reads the border router afresh and says
+  what it is (the end of its border agent ID, the network name, its role, its
+  routers) and, for "Disable Thread", what disabling cuts; the second click,
+  **within 2 minutes**, reads the border router afresh again and sends only
+  if **the same border router** answers (same border agent ID) and Thread is
+  not already in the state asked. Turning the option off cancels a first
+  click; the option is checked again right before the request is written;
+- the request is `PUT /node/state` with `"disable"` or `"enable"` (what
+  `ot-ctl thread stop` / `thread start` do). It never leaves later than
+  20 seconds after the second click;
+- the outcome is read back (`GET /node/state`, up to three times: 1 second
+  after the answer, then 2 seconds later, then 4 seconds later):
+  - **Thread disabled (confirmed)** / **Thread enabled** when the role read
+    shows the change (enabled: any role but "disabled"; the border router
+    goes through "detached" first);
+  - **Sent, not applied yet** when the role read is still the one before;
+  - **Sent, without confirmation** when the border router did not answer the
+    request (it may have applied it);
+  - **Refused by the border router (HTTP …)** when it answered an error (HTTP 4xx or 5xx);
+  - **Nothing sent (…)** when the request never left.
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+  The outcome (but "Nothing sent") is kept as "Last action" (and in
+  `/data`), and a reading follows: 1 second after a confirmed action,
+  20 seconds after "not applied yet" or "without confirmation" (none after a
+  refusal of the border router).
+
+- one action at a time; a reading in progress is cut by an action.
+
+Every refusal of an action, and the list of what makes it refuse:
+
+- "Allow Thread actions" off (also when it is turned off between the two
+  clicks, or while the request is being written);
+- the address of the border router not valid;
+- another Thread action running;
+- a pause asked by the border router (HTTP 429 or 5xx on `/node`) not over;
+- the border router not read (no connection, timeout, error, not a border
+  router), or read without a border agent ID;
+- Thread already in the state asked;
+- more than 20 seconds between the second click and the moment the request
+  would be written.
+
+Gladys never disables nor enables Thread by itself.
+
+## Status and errors
+
+The configuration screen says the state of the border router ("Connected:
+Thread role leader, 3 Thread router(s)", "Thread is disabled on the border
+router"), or why it was not read ("no connection", "no answer in time",
+"HTTP error 500", "not the REST API of a border router") and when the next
+try comes.
+
+A border router that answers **HTTP 429 or 5xx on `/node`** asks to wait:
+Gladys waits what its `Retry-After` header says, 60 seconds at least and
+6 hours at most (and never less than the refresh), kept in `/data` across a
+restart; the Thread actions are refused meanwhile. A 5xx on the dataset or on
+`/node/ba-id` never pauses anything.
+
+## Privacy and security
+
+- No account, no cloud: everything stays between Gladys and the border router
+  on your network.
+- The REST API of ot-br-posix has no login and no HTTPS: anyone on your
+  network can read it, and **anyone on your network can disable Thread
+  through it**, with or without Gladys. Keep it on a trusted network.
+- Of the active dataset, only what every Thread router broadcasts in its
+  beacons anyway (network name, channel, PAN ID, extended PAN ID) is used.
+- `/data/otbr-state.json` (0600) holds the time of the last reading and the
+  address read, a pause asked by the border router, and the last action and
+  its outcome. Nothing else.
+
+## Limits of this first version
+
+- Never tested with a real border router nor a real Thread device (see the
+  warning above).
+- One border router per integration.
+- No count of the end devices (see "What is read").
+- No writing of the dataset (forming or changing a Thread network), no
+  factory reset, no commissioning of Thread devices.

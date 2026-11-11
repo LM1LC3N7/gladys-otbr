@@ -1,0 +1,248 @@
+[
+  {
+    "name": "threadAction: option check removed",
+    "file": "src/app.js",
+    "from": "    if (!this.config.allowThreadControl) {\n      this.confirm = null;\n      return T.action.notAllowed;\n    }\n    if (!this.client) return T.action.invalidHost;",
+    "to": "    if (!this.client) return T.action.invalidHost;"
+  },
+  {
+    "name": "runAction: option re-check after the read removed",
+    "file": "src/app.js",
+    "from": "    if (!this.config.allowThreadControl) {\n      this.confirm = null;\n      return T.action.notAllowed;\n    }\n    if (!node.baId) return T.action.noBaId;",
+    "to": "    if (!node.baId) return T.action.noBaId;"
+  },
+  {
+    "name": "beforeSend: option check removed",
+    "file": "src/app.js",
+    "from": "          if (!this.config.allowThreadControl) throw",
+    "to": "          if (false) throw"
+  },
+  {
+    "name": "beforeSend: deadline check removed",
+    "file": "src/app.js",
+    "from": "if (this.monotonic() > sendBy) throw",
+    "to": "if (false) throw"
+  },
+  {
+    "name": "beforeSend: stop check removed",
+    "file": "src/app.js",
+    "from": "          if (gen !== this.gen || this.stopped || signal.aborted) {\n            throw",
+    "to": "          if (false) {\n            throw"
+  },
+  {
+    "name": "confirm: same border router not required",
+    "file": "src/app.js",
+    "from": "      pending.baId === node.baId &&\n",
+    "to": "      true &&\n"
+  },
+  {
+    "name": "confirm: window of 2 minutes ignored",
+    "file": "src/app.js",
+    "from": "      mono - pending.at <= INTERVALS.CONFIRM_WINDOW_MS;",
+    "to": "      true;"
+  },
+  {
+    "name": "confirm: kind not compared",
+    "file": "src/app.js",
+    "from": "      pending.kind === kind &&\n      pending.baId",
+    "to": "      true &&\n      pending.baId"
+  },
+  {
+    "name": "confirm: one click enough",
+    "file": "src/app.js",
+    "from": "    const valid =\n      pending &&",
+    "to": "    const valid =\n      true ||"
+  },
+  {
+    "name": "already in the state asked: sent anyway",
+    "file": "src/app.js",
+    "from": "    if (isDone(node.role)) {",
+    "to": "    if (false) {"
+  },
+  {
+    "name": "confirmed without the role showing it",
+    "file": "src/app.js",
+    "from": "    if (role !== null && isDone(role)) {\n      await this.recordAction",
+    "to": "    if (true) {\n      await this.recordAction"
+  },
+  {
+    "name": "option off does not cancel a first click",
+    "file": "src/app.js",
+    "from": "    if (!config.allowThreadControl) this.confirm = null;",
+    "to": "    void 0;"
+  },
+  {
+    "name": "busy: two actions at once",
+    "file": "src/app.js",
+    "from": "    if (this.action) return T.action.busy;",
+    "to": "    void 0;"
+  },
+  {
+    "name": "action does not cut a reading",
+    "file": "src/app.js",
+    "from": "    // A reading in flight is cut: the action reads the router itself.\n    this.poll?.controller.abort();",
+    "to": "    void 0;"
+  },
+  {
+    "name": "action ignores a pause",
+    "file": "src/app.js",
+    "from": "    if (this.pauseDue !== undefined && this.pauseDue > mono) {",
+    "to": "    if (false) {"
+  },
+  {
+    "name": "pace: the pause not applied",
+    "file": "src/app.js",
+    "from": "    if (this.pauseDue !== undefined) due = Math.max(due, this.pauseDue);",
+    "to": "    void 0;"
+  },
+  {
+    "name": "pace: the interval not applied",
+    "file": "src/app.js",
+    "from": "this.lastReadAt + this.config.pollMs",
+    "to": "this.lastReadAt"
+  },
+  {
+    "name": "restart: attempt of /data ignored",
+    "file": "src/app.js",
+    "from": "    if (this.memory.lastAttemptAt > 0 && this.memory.attemptKey === this.key) {",
+    "to": "    if (false) {"
+  },
+  {
+    "name": "restart: attempt of another address applied",
+    "file": "src/app.js",
+    "from": "this.memory.lastAttemptAt > 0 && this.memory.attemptKey === this.key",
+    "to": "this.memory.lastAttemptAt > 0"
+  },
+  {
+    "name": "attempt not written before the reading",
+    "file": "src/app.js",
+    "from": "      this.memory.lastAttemptAt = this.now();\n      this.memory.attemptKey = this.key;\n      await this.save();",
+    "to": "      void 0;"
+  },
+  {
+    "name": "ba-id 5xx pauses",
+    "file": "src/app.js",
+    "from": "throw Object.assign(err, { secondary: true });",
+    "to": "throw err;"
+  },
+  {
+    "name": "dataset failure stops the reading",
+    "file": "src/app.js",
+    "from": "      dataset = undefined;\n",
+    "to": "      throw err;\n"
+  },
+  {
+    "name": "pause not lifted in /data by a good reading",
+    "file": "src/app.js",
+    "from": "        this.memory.pause = null;\n",
+    "to": "        void 0;\n"
+  },
+  {
+    "name": "pause: no minimum",
+    "file": "src/app.js",
+    "from": "        err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,\n        INTERVALS.PAUSE_MIN_MS,",
+    "to": "        err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,\n        0,"
+  },
+  {
+    "name": "pause not kept in /data",
+    "file": "src/app.js",
+    "from": "        this.memory.pause = { key: this.key, until: this.now() + wait, status: err.status };",
+    "to": "        void 0;"
+  },
+  {
+    "name": "last action of another address shown",
+    "file": "src/app.js",
+    "from": "action && action.key === this.key ? action : null",
+    "to": "action ?? null"
+  },
+  {
+    "name": "deviceCreated: stale reading published",
+    "file": "src/app.js",
+    "from": "if (!this.reading || this.monotonic() - this.readMono > MAX_STALE_MS) return;",
+    "to": "if (!this.reading) return;"
+  },
+  {
+    "name": "deviceCreated: not dated",
+    "file": "src/app.js",
+    "from": "      ...s,\n      created_at,",
+    "to": "      ...s,"
+  },
+  {
+    "name": "sleep leaves its timer at stop",
+    "file": "src/app.js",
+    "from": "        this.timers.clearTimeout(handle);\n        resolve();",
+    "to": "        resolve();"
+  },
+  {
+    "name": "stop: action not cut",
+    "file": "src/app.js",
+    "from": "    this.action?.controller.abort();\n    return this.serialize",
+    "to": "    return this.serialize"
+  },
+  {
+    "name": "http: counted size cap removed",
+    "file": "src/otbr/http.js",
+    "from": "            if (size > maxBytes) {",
+    "to": "            if (false) {"
+  },
+  {
+    "name": "http: declared size cap removed",
+    "file": "src/otbr/http.js",
+    "from": "if (Number.isFinite(declared) && declared > maxBytes) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "http: beforeSend not called",
+    "file": "src/otbr/http.js",
+    "from": "        beforeSend?.();\n",
+    "to": "        void 0;\n"
+  },
+  {
+    "name": "parse: role not required",
+    "file": "src/otbr/parse.js",
+    "from": "  if (role === null) throw bad('No Thread role in the node');",
+    "to": "  void 0;"
+  },
+  {
+    "name": "parse: the network key copied out of the dataset",
+    "file": "src/otbr/parse.js",
+    "from": "    timestamp: Number.isSafeInteger(seconds) && seconds >= 0 ? seconds : null,\n",
+    "to": "    timestamp: Number.isSafeInteger(seconds) && seconds >= 0 ? seconds : null,\n    key: pick(dataset, 'networkKey', 'NetworkKey'),\n"
+  },
+  {
+    "name": "parse: routers not strict (text read as a count)",
+    "file": "src/otbr/parse.js",
+    "from": "  Number.isInteger(value) && value >= 0 && value <= max ? value : null;",
+    "to": "  Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= max ? Number(value) : null;"
+  },
+  {
+    "name": "config: https accepted",
+    "file": "src/config.js",
+    "from": "    if (url.protocol !== 'http:') return { error: 'invalid' };",
+    "to": "    void 0;"
+  },
+  {
+    "name": "store: future last action kept",
+    "file": "src/store.js",
+    "from": "action && action.at <= now ? action : null",
+    "to": "action"
+  },
+  {
+    "name": "devices: unknown dataset published as none",
+    "file": "src/devices.js",
+    "from": "(r.dataset === undefined ? null : r.dataset === null ? 0 : 1)",
+    "to": "(r.dataset ? 1 : 0)"
+  },
+  {
+    "name": "devices: leftover name of a detached router shown",
+    "file": "src/devices.js",
+    "from": "attached(r) && r.node.networkName ? r.node.networkName",
+    "to": "r.node?.networkName ? r.node.networkName"
+  },
+  {
+    "name": "devices: leftover router count of a detached router published",
+    "file": "src/devices.js",
+    "from": "(r) => (attached(r) ? num(r.node.routers) : null),",
+    "to": "(r) => num(r.node?.routers),"
+  }
+]
