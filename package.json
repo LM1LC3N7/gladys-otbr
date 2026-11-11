@@ -1,6 +1,6 @@
 {
   "name": "gladys-otbr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for an OpenThread Border Router through its local REST API: Thread role, routers, network name, channel, PAN ID; disable and enable Thread actions off by default. Unofficial, not affiliated with the OpenThread project.",
   "type": "module",

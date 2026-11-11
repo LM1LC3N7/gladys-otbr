@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-11
+
 ### Added
 
 - First version: one OpenThread Border Router read through its local REST API
@@ -33,3 +35,6 @@ the notes of the version's GitHub Release.
   again 20 s later; the restart status says when the first reading comes; an
   action no longer waits for the publication of the reading it cuts; an
   action ends within 45 s.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-otbr/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-otbr/releases/tag/v0.1.1
