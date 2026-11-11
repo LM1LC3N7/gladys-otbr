@@ -49,6 +49,11 @@ export function createFakeOtbr({ timers, pascal = false } = {}) {
     /** Role after "enable" (a real router goes through "detached" first). */
     enabledRole: 'leader',
     latencyMs: 0,
+    /** Latency of one route ('PUT /node/state'), instead of latencyMs. */
+    routeLatency: {},
+    /** Requests written and not answered yet, and the most at once. */
+    inflight: 0,
+    peak: 0,
     /** Delay before the request is written (the TCP connection), on the virtual clock. */
     connectMs: 0,
     /** The same, for the PUT only. */
@@ -133,6 +138,7 @@ export function createFakeOtbr({ timers, pascal = false } = {}) {
         const finish = (err, value) => {
           if (done) return;
           done = true;
+          if (written) otbr.inflight -= 1;
           if (handle !== undefined) timers.clearTimeout(handle);
           signal?.removeEventListener('abort', onAbort);
           if (err) reject(err);
@@ -159,6 +165,8 @@ export function createFakeOtbr({ timers, pascal = false } = {}) {
             return;
           }
           written = true;
+          otbr.inflight += 1;
+          otbr.peak = Math.max(otbr.peak, otbr.inflight);
           otbr.sent.push({ method, path, body, timeout });
           const override = otbr.routes[`${method} ${path}`];
           if (override === 'hang') {
@@ -184,7 +192,8 @@ export function createFakeOtbr({ timers, pascal = false } = {}) {
                   );
             finish(null, { status: res.status, headers: res.headers ?? {}, body: payload });
           };
-          if (otbr.latencyMs > 0) handle = timers.setTimeout(answer, otbr.latencyMs);
+          const latency = otbr.routeLatency[`${method} ${path}`] ?? otbr.latencyMs;
+          if (latency > 0) handle = timers.setTimeout(answer, latency);
           else answer();
         }
       });

@@ -48,8 +48,14 @@ const MAX_STALE_MS = 2 * 60 * 60_000;
 const STOP_WAIT_MS = 3_000;
 /** The PUT of an action never leaves later than this after the second click. */
 const SEND_BY_MS = 20_000;
-/** The checks after an action end by this, after the second click (the button waits 45 s). */
-const ACTION_BUDGET_MS = 38_000;
+/**
+ * The checks after an action end by this, after the second click, their own
+ * request deadline included (the button waits 45 s; the outcome is then
+ * kept within the 3 s of a /data write).
+ */
+const ACTION_BUDGET_MS = 35_000;
+/** The outcome of an action recorded within this (a write of /data, a publication). */
+const RECORD_MS = 3_000;
 
 export class OtbrApp {
   /**
@@ -103,6 +109,8 @@ export class OtbrApp {
     /** The action in flight: { controller, done }. */
     this.action = undefined;
     this.lastStatus = null;
+    /** The configuration was read from Gladys since the last connection (I1). */
+    this.configFresh = false;
     this.resetTarget();
   }
 
@@ -144,6 +152,10 @@ export class OtbrApp {
   async startFromGladys(attempt = 0) {
     this.clearTimer('configTimer');
     if (this.stopped) return;
+    // Until it is read again, the option may have changed in Gladys meanwhile:
+    // no Thread action, and a first click is forgotten.
+    this.configFresh = false;
+    this.confirm = null;
     let config;
     try {
       config = await this.gladys.getConfig();
@@ -187,6 +199,8 @@ export class OtbrApp {
   /** Gladys went away: the loop stops; the target, the pace and the pause stay. */
   pause() {
     this.running = false;
+    this.configFresh = false;
+    this.confirm = null;
     this.clearTimer('timer');
     this.clearTimer('configTimer');
     this.clearTimer('storeTimer');
@@ -238,15 +252,19 @@ export class OtbrApp {
     const same = key !== null && key === this.key;
     this.config = config;
     this.running = true;
+    this.configFresh = true;
     // The option off cancels a first click waiting for its second.
     if (!config.allowThreadControl) this.confirm = null;
     if (!same) {
-      // Another border router (or none): what belonged to the old one goes.
+      // Another border router (or none): what belonged to the old one goes,
+      // its device no longer "local" (nothing reads it any more).
       this.gen += 1;
       this.poll?.controller.abort();
+      const old = this.baId;
       this.key = key;
       this.client = key ? createClient(this.request, config) : null;
       this.resetTarget();
+      if (old) await this.publishTransport(old, 'unreachable');
     }
     await this.loadMemory();
     if (this.stopped || !this.running) return;
@@ -263,7 +281,11 @@ export class OtbrApp {
     // reading again, no reading sooner.
     if (same && this.reading) await this.publishDiscovery();
     if (this.readStatus) await this.republishStatus();
-    else await this.setStatus(false, T.status.waiting);
+    else {
+      // No reading yet: the next one may wait for the interval kept in /data.
+      const wait = this.dueIn(this.monotonic());
+      await this.setStatus(false, wait > 0 ? T.status.waitingIn(wait) : T.status.waiting);
+    }
     this.arm();
   }
 
@@ -414,15 +436,21 @@ export class OtbrApp {
   }
 
   async setTransport(transport) {
-    if (!this.baId || !createdDevice(this.gladys, this.baId)) return;
-    if (this.transport === transport) return;
+    if (!this.baId || this.transport === transport) return;
+    if (await this.publishTransport(this.baId, transport)) this.transport = transport;
+  }
+
+  /** The badge of the created device of `baId`; true once Gladys took it. */
+  async publishTransport(baId, transport) {
+    if (!createdDevice(this.gladys, baId)) return false;
     try {
       await this.gladys.publishTransports([
-        { external_id: deviceIds(this.gladys, this.baId).device, transport },
+        { external_id: deviceIds(this.gladys, baId).device, transport },
       ]);
-      this.transport = transport;
+      return true;
     } catch (err) {
       this.logger.warn(`Badge not published (${err?.name ?? 'Error'})`);
+      return false;
     }
   }
 
@@ -491,8 +519,10 @@ export class OtbrApp {
     }
     if (gen !== this.gen || this.stopped || !this.running || this.action) return;
     const controller = new AbortController();
-    const done = this.doRead(gen, controller.signal);
-    this.poll = { controller, done };
+    const poll = { controller, done: undefined, net: undefined };
+    this.poll = poll;
+    const done = this.doRead(gen, controller.signal, poll);
+    poll.done = done;
     try {
       await done;
     } finally {
@@ -516,21 +546,38 @@ export class OtbrApp {
     return { ...node, baId };
   }
 
-  async doRead(gen, signal) {
-    let node;
-    try {
-      node = await this.readNode(signal);
-    } catch (err) {
-      if (gen !== this.gen || signal.aborted) return;
-      await this.readFailed(err);
+  /**
+   * One reading. `poll.net` settles once its requests are over (an action
+   * waits for that, never for the publication to Gladys that follows).
+   */
+  async doRead(gen, signal, poll = {}) {
+    const net = this.fetchReading(signal);
+    poll.net = net;
+    const result = await net;
+    if (gen !== this.gen || signal.aborted) return;
+    if (result.error) {
+      await this.readFailed(result.error, gen);
       return;
     }
-    if (gen !== this.gen || signal.aborted) return;
+    const { node, dataset } = result;
     if (!node.baId) {
       await this.setTransport('unreachable');
+      if (gen !== this.gen) return;
       await this.setReadStatus(false, T.status.noBaId(this.config.pollMs));
       return;
     }
+    await this.accept(node, dataset);
+  }
+
+  /** The requests of a reading: { node, dataset } or { error }; never rejects. */
+  async fetchReading(signal) {
+    let node;
+    try {
+      node = await this.readNode(signal);
+    } catch (error) {
+      return { error };
+    }
+    if (!node.baId || signal.aborted) return { node };
     let dataset;
     try {
       dataset = await this.client.dataset(signal);
@@ -539,8 +586,7 @@ export class OtbrApp {
       dataset = undefined;
       this.logger.debug(`Active dataset not read (${err?.code ?? 'error'})`);
     }
-    if (gen !== this.gen || signal.aborted) return;
-    await this.accept(node, dataset);
+    return { node, dataset };
   }
 
   /** A reading that worked: the pause lifted, the device and its states published. */
@@ -558,6 +604,7 @@ export class OtbrApp {
       this.logger.info('Another border router answers at the address: another device');
       await this.setTransport('unreachable');
       this.transport = null;
+      if (gen !== this.gen) return;
     }
     this.baId = node.baId;
     this.reading = { node, dataset, lastAction: this.lastActionHere() };
@@ -571,21 +618,13 @@ export class OtbrApp {
     await this.setReadStatus(true, T.status.connected(node));
   }
 
-  async readFailed(err) {
+  async readFailed(err, gen = this.gen) {
     this.logger.warn(`Border router not read (${err?.code ?? 'error'}: ${err?.message})`);
     await this.setTransport('unreachable');
+    if (gen !== this.gen) return;
     if (isPause(err) && !err.secondary) {
-      const wait = clamp(
-        err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,
-        INTERVALS.PAUSE_MIN_MS,
-        INTERVALS.PAUSE_MAX_MS,
-      );
-      this.pauseDue = this.monotonic() + wait;
-      this.pauseStatus = err.status;
-      if (this.memory) {
-        this.memory.pause = { key: this.key, until: this.now() + wait, status: err.status };
-        await this.save();
-      }
+      const wait = await this.setPause(err);
+      if (gen !== this.gen) return;
       await this.setReadStatus(
         false,
         T.status.paused(err.status, Math.max(wait, this.config.pollMs)),
@@ -593,6 +632,22 @@ export class OtbrApp {
       return;
     }
     await this.setReadStatus(false, T.status.failed(err, this.config.pollMs));
+  }
+
+  /** A pause asked by the router (429, 5xx of /node): Retry-After, 60 s to 6 h, kept in /data. */
+  async setPause(err) {
+    const wait = clamp(
+      err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,
+      INTERVALS.PAUSE_MIN_MS,
+      INTERVALS.PAUSE_MAX_MS,
+    );
+    this.pauseDue = this.monotonic() + wait;
+    this.pauseStatus = err.status;
+    if (this.memory) {
+      this.memory.pause = { key: this.key, until: this.now() + wait, status: err.status };
+      await this.save();
+    }
+    return wait;
   }
 
   // --- Configuration screen buttons --------------------------------------------
@@ -620,6 +675,10 @@ export class OtbrApp {
       this.confirm = null;
       return T.action.notAllowed;
     }
+    if (!this.configFresh) {
+      this.confirm = null;
+      return T.action.configNotRead;
+    }
     if (!this.client) return T.action.invalidHost;
     if (this.action) return T.action.busy;
     const mono = this.monotonic();
@@ -641,18 +700,24 @@ export class OtbrApp {
 
   async runAction(kind, start, signal) {
     const gen = this.gen;
-    await this.poll?.done?.catch(() => {});
+    // The address of the click: the outcome is kept under it, whatever comes next.
+    const key = this.key;
+    // The requests of the reading cut are over (one request at a time), never
+    // its publication to Gladys.
+    await this.poll?.net;
     let node;
     try {
       node = await this.readNode(signal);
     } catch (err) {
+      // The router asking to wait: a pause, as for a reading.
+      if (isPause(err) && !err.secondary && gen === this.gen) await this.setPause(err);
       return T.action.notRead(err);
     }
     if (gen !== this.gen || this.stopped) return T.action.notSent({ code: CODES.LATE });
     // Turned off while the router was read: refused, the first click forgotten.
-    if (!this.config.allowThreadControl) {
+    if (!this.config.allowThreadControl || !this.configFresh) {
       this.confirm = null;
-      return T.action.notAllowed;
+      return this.configFresh ? T.action.notAllowed : T.action.configNotRead;
     }
     if (!node.baId) return T.action.noBaId;
     const target = kind === 'disable' ? 'disabled' : 'enabled';
@@ -680,8 +745,11 @@ export class OtbrApp {
         signal,
         beforeSend: () => {
           // The very last checks, right before the first byte.
-          if (!this.config.allowThreadControl) throw Object.assign(new Error('off'), { off: true });
-          if (gen !== this.gen || this.stopped || signal.aborted) {
+          if (!this.config.allowThreadControl || !this.configFresh) {
+            throw Object.assign(new Error('off'), { off: true });
+          }
+          // (An aborted signal is refused by the transport itself.)
+          if (gen !== this.gen || this.stopped) {
             throw Object.assign(new Error('stopped'), { code: CODES.LATE });
           }
           if (this.monotonic() > sendBy) throw Object.assign(new Error('late'), { late: true });
@@ -694,18 +762,21 @@ export class OtbrApp {
         return T.action.notSent(err);
       }
       if (err?.code === CODES.HTTP || err?.code === CODES.REDIRECT) {
-        await this.recordAction(node.baId, kind, 'refused');
+        await this.recordAction(key, node.baId, kind, 'refused');
+        // An error of the router may come after Thread changed: read again.
+        this.followUp(INTERVALS.FOLLOW_UP_MS);
         return T.action.refused(err.status);
       }
       // Sent, no answer (timeout, connection cut): maybe applied.
-      await this.recordAction(node.baId, kind, 'no_answer');
+      await this.recordAction(key, node.baId, kind, 'no_answer');
       this.followUp(INTERVALS.FOLLOW_UP_MS);
       return T.action.noAnswer;
     }
     // Read back: confirmed only when the role shows the change.
     let role = null;
     for (const delay of INTERVALS.CHECKS_MS) {
-      if (this.monotonic() + delay > start + ACTION_BUDGET_MS) break;
+      // The check and its own request end within the budget of the button.
+      if (this.monotonic() + delay + INTERVALS.READ_TIMEOUT_MS > start + ACTION_BUDGET_MS) break;
       await this.sleep(delay, signal);
       if (gen !== this.gen || this.stopped || signal.aborted) break;
       try {
@@ -716,11 +787,11 @@ export class OtbrApp {
       if (role !== null && isDone(role)) break;
     }
     if (role !== null && isDone(role)) {
-      await this.recordAction(node.baId, kind, 'confirmed');
+      await this.recordAction(key, node.baId, kind, 'confirmed');
       this.followUp(INTERVALS.CHECKS_MS[0]);
       return T.action.confirmed(kind, role);
     }
-    await this.recordAction(node.baId, kind, 'unconfirmed');
+    await this.recordAction(key, node.baId, kind, 'unconfirmed');
     this.followUp(INTERVALS.FOLLOW_UP_MS);
     return T.action.unconfirmed(role);
   }
@@ -756,15 +827,21 @@ export class OtbrApp {
     if (this.followUpDue === undefined || due < this.followUpDue) this.followUpDue = due;
   }
 
-  /** The outcome kept in /data and published as "Last action" at once. */
-  async recordAction(baId, kind, outcome) {
-    const action = { key: this.key, kind, outcome, at: this.now() };
+  /** The outcome kept in /data and published as "Last action" at once (bounded). */
+  async recordAction(key, baId, kind, outcome) {
+    await this.within(this.doRecordAction(key, baId, kind, outcome), RECORD_MS).catch(() =>
+      this.logger.warn('Last action not kept in time'),
+    );
+  }
+
+  async doRecordAction(key, baId, kind, outcome) {
+    const action = { key, kind, outcome, at: this.now() };
     if (this.memory) {
       this.memory.lastAction = action;
       await this.save();
     }
-    // Published on the device of the router acted on only (the one read last).
-    if (this.reading && this.baId === baId) {
+    // Published on the device of the router acted on only, at the same address.
+    if (this.reading && this.key === key && this.baId === baId) {
       this.reading = { ...this.reading, lastAction: action };
       await this.publisher.publish(
         statesOf(this.gladys, this.baId, this.reading, { only: [FEATURES.LAST_ACTION] }),

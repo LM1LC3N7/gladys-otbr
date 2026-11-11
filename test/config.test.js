@@ -9,6 +9,10 @@ test('addresses: IPv4, host name, IPv6, optional port and http://; 8081 by defau
   assert.deepEqual(parseHost('http://[fd00::1]:8081'), { host: 'fd00::1', port: 8081 });
   assert.deepEqual(parseHost('[FD00::2]:9000'), { host: 'fd00::2', port: 9000 });
   assert.deepEqual(parseHost('fd00::3'), { host: 'fd00::3', port: 8081 });
+  // Port 80 typed is port 80, even though URL drops it as the default of http.
+  assert.deepEqual(parseHost('http://192.168.1.30:80'), { host: '192.168.1.30', port: 80 });
+  assert.deepEqual(parseHost('http://[fd00::1]:80/node'), { host: 'fd00::1', port: 80 });
+  assert.deepEqual(parseHost('http://192.168.1.30/'), { host: '192.168.1.30', port: 8081 });
 });
 
 test('addresses refused: https, credentials, query, broadcast, multicast, any, control characters', () => {

@@ -74,6 +74,13 @@ export const T = {
       );
     },
     waiting: of('Connecting to the border router…', 'Connexion au routeur de bordure…'),
+    waitingIn: (ms) => {
+      const d = delayOf(ms);
+      return of(
+        `Not read since the restart: next reading in ${d.en} (never sooner than the refresh).`,
+        `Pas encore lu depuis le redémarrage : prochaine lecture dans ${d.fr} (jamais avant le rafraîchissement).`,
+      );
+    },
     connected: (node) => {
       if (node.role === 'disabled') {
         return of(
@@ -129,6 +136,10 @@ export const T = {
     invalidHost: of(
       'Refused: the address of the border router is not valid. Nothing sent.',
       'Refusé : l’adresse du routeur de bordure n’est pas valide. Rien envoyé.',
+    ),
+    configNotRead: of(
+      'Refused: the configuration was not read again from Gladys since the reconnection. Nothing sent.',
+      'Refusé : la configuration n’a pas été relue depuis Gladys depuis la reconnexion. Rien envoyé.',
     ),
     busy: of(
       'Refused: another Thread action is running. Nothing sent.',
@@ -194,8 +205,8 @@ export const T = {
       'Rien envoyé : « Autoriser les actions Thread » a été désactivé entre-temps.',
     ),
     tooLate: of(
-      'Nothing sent: the border router was read too slowly to send in time. Try again.',
-      'Rien envoyé : le routeur de bordure a été lu trop lentement pour envoyer à temps. Réessayez.',
+      'Nothing sent: more than 20 s passed since the click before the request could be written. Try again.',
+      'Rien envoyé : plus de 20 s écoulées depuis le clic avant de pouvoir écrire la requête. Réessayez.',
     ),
     refused: (status) =>
       of(

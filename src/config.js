@@ -56,7 +56,9 @@ export function parseHost(value) {
     }
     if (url.protocol !== 'http:') return { error: 'invalid' };
     if (url.username || url.password || url.search || url.hash) return { error: 'invalid' };
-    port = url.port ? Number(url.port) : null;
+    // URL drops a port equal to the default of the scheme (80): read it as typed.
+    const typed = /^[a-z][a-z0-9+.-]*:\/\/(?:\[[^\]]*\]|[^/:?#@]*):(\d{1,5})(?:[/?#]|$)/i.exec(raw);
+    port = url.port ? Number(url.port) : typed ? parsePort(typed[1]) : null;
     raw = url.hostname;
   } else {
     const match = /^([^:[\]/]+):(\d{1,5})$/.exec(raw) ?? /^\[([^\]]+)\]:(\d{1,5})$/.exec(raw);

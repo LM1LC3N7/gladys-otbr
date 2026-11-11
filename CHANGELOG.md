@@ -21,3 +21,15 @@ the notes of the version's GitHub Release.
 - "Disable Thread" and "Enable Thread" buttons of the configuration screen,
   refused unless allowed, two clicks, the same border router checked, the
   outcome read back; never a switch nor a feature of the device.
+
+### Fixed
+
+- A Thread action is refused while the configuration was not read again from
+  Gladys after a reconnection (the option may have changed meanwhile).
+- After a change of address, the device of the old border router is marked
+  unreachable.
+- `http://host:80` keeps port 80; the outcome of an action is kept under the
+  address of the click; a 429/5xx met by a click pauses; a refused PUT is read
+  again 20 s later; the restart status says when the first reading comes; an
+  action no longer waits for the publication of the reading it cuts; an
+  action ends within 45 s.

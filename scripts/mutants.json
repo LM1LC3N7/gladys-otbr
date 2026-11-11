@@ -2,20 +2,20 @@
   {
     "name": "threadAction: option check removed",
     "file": "src/app.js",
-    "from": "    if (!this.config.allowThreadControl) {\n      this.confirm = null;\n      return T.action.notAllowed;\n    }\n    if (!this.client) return T.action.invalidHost;",
-    "to": "    if (!this.client) return T.action.invalidHost;"
+    "from": "    if (!this.config.allowThreadControl) {\n      this.confirm = null;\n      return T.action.notAllowed;\n    }\n    if (!this.configFresh) {",
+    "to": "    if (!this.configFresh) {"
   },
   {
     "name": "runAction: option re-check after the read removed",
     "file": "src/app.js",
-    "from": "    if (!this.config.allowThreadControl) {\n      this.confirm = null;\n      return T.action.notAllowed;\n    }\n    if (!node.baId) return T.action.noBaId;",
-    "to": "    if (!node.baId) return T.action.noBaId;"
+    "from": "    if (!this.config.allowThreadControl || !this.configFresh) {\n      this.confirm = null;\n      return this.configFresh",
+    "to": "    if (!this.configFresh) {\n      this.confirm = null;\n      return this.configFresh"
   },
   {
     "name": "beforeSend: option check removed",
     "file": "src/app.js",
-    "from": "          if (!this.config.allowThreadControl) throw",
-    "to": "          if (false) throw"
+    "from": "          if (!this.config.allowThreadControl || !this.configFresh) {\n            throw Object.assign(new Error('off')",
+    "to": "          if (!this.configFresh) {\n            throw Object.assign(new Error('off')"
   },
   {
     "name": "beforeSend: deadline check removed",
@@ -26,7 +26,7 @@
   {
     "name": "beforeSend: stop check removed",
     "file": "src/app.js",
-    "from": "          if (gen !== this.gen || this.stopped || signal.aborted) {\n            throw",
+    "from": "          if (gen !== this.gen || this.stopped) {\n            throw",
     "to": "          if (false) {\n            throw"
   },
   {
@@ -140,14 +140,14 @@
   {
     "name": "pause: no minimum",
     "file": "src/app.js",
-    "from": "        err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,\n        INTERVALS.PAUSE_MIN_MS,",
-    "to": "        err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,\n        0,"
+    "from": "      err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,\n      INTERVALS.PAUSE_MIN_MS,\n      INTERVALS.PAUSE_MAX_MS,",
+    "to": "      err.retryAfterMs ?? INTERVALS.PAUSE_MIN_MS,\n      0,\n      INTERVALS.PAUSE_MAX_MS,"
   },
   {
     "name": "pause not kept in /data",
     "file": "src/app.js",
-    "from": "        this.memory.pause = { key: this.key, until: this.now() + wait, status: err.status };",
-    "to": "        void 0;"
+    "from": "      this.memory.pause = { key: this.key, until: this.now() + wait, status: err.status };",
+    "to": "      void 0;"
   },
   {
     "name": "last action of another address shown",
@@ -244,5 +244,299 @@
     "file": "src/devices.js",
     "from": "(r) => (attached(r) ? num(r.node.routers) : null),",
     "to": "(r) => num(r.node?.routers),"
+  },
+  {
+    "name": "r1: http: request written before the TCP connection is up",
+    "file": "src/otbr/http.js",
+    "from": "if (socket.connecting) socket.once('connect', ready);",
+    "to": "if (false) socket.once('connect', ready);"
+  },
+  {
+    "name": "r1: http: agent:false removed (default agent, keep-alive)",
+    "file": "src/otbr/http.js",
+    "from": "          agent: false,\n",
+    "to": ""
+  },
+  {
+    "name": "r1: deadline constant 20 s -> 60 s",
+    "file": "src/app.js",
+    "from": "const SEND_BY_MS = 20_000;",
+    "to": "const SEND_BY_MS = 60_000;"
+  },
+  {
+    "name": "r1: confirm window constant 2 min -> 10 min",
+    "file": "src/constants.js",
+    "from": "CONFIRM_WINDOW_MS: 2 * 60_000",
+    "to": "CONFIRM_WINDOW_MS: 10 * 60_000"
+  },
+  {
+    "name": "r1: doStart: every address is the same target",
+    "file": "src/app.js",
+    "from": "const same = key !== null && key === this.key;",
+    "to": "const same = key !== null;"
+  },
+  {
+    "name": "r1: isPause: 429 no longer pauses",
+    "file": "src/otbr/errors.js",
+    "from": "err?.code === CODES.HTTP && (err.status === 429 || err.status >= 500)",
+    "to": "err?.code === CODES.HTTP && err.status >= 500"
+  },
+  {
+    "name": "r1: isPause: 500 no longer pauses",
+    "file": "src/otbr/errors.js",
+    "from": "err.status >= 500)",
+    "to": "err.status > 500)"
+  },
+  {
+    "name": "r1: store: not-a-regular-file check removed",
+    "file": "src/store.js",
+    "from": "if (!info.isFile()) throw",
+    "to": "if (false) throw"
+  },
+  {
+    "name": "r1: store: O_NONBLOCK removed",
+    "file": "src/store.js",
+    "from": "(constants.O_NONBLOCK ?? 0)",
+    "to": "0"
+  },
+  {
+    "name": "r1: no answer: no follow-up reading",
+    "file": "src/app.js",
+    "from": "      this.followUp(INTERVALS.FOLLOW_UP_MS);\n      return T.action.noAnswer;",
+    "to": "      return T.action.noAnswer;"
+  },
+  {
+    "name": "r1: confirmed: no follow-up reading",
+    "file": "src/app.js",
+    "from": "      this.followUp(INTERVALS.CHECKS_MS[0]);",
+    "to": "      void 0;"
+  },
+  {
+    "name": "r1: config: credentials/query/hash accepted",
+    "file": "src/config.js",
+    "from": "if (url.username || url.password || url.search || url.hash) return { error: 'invalid' };",
+    "to": "void 0;"
+  },
+  {
+    "name": "r1: config: multicast IPv4 accepted",
+    "file": "src/config.js",
+    "from": "  if (a >= 224) return true;\n",
+    "to": ""
+  },
+  {
+    "name": "r1: parse: network name > 16 bytes accepted",
+    "file": "src/otbr/parse.js",
+    "from": "  if (Buffer.byteLength(value, 'utf8') > 16) return null;\n",
+    "to": ""
+  },
+  {
+    "name": "r1: parse: channel range",
+    "file": "src/otbr/parse.js",
+    "from": "Number.isInteger(channel) && channel >= 11 && channel <= 26 ? channel : null",
+    "to": "Number.isInteger(channel) ? channel : null"
+  },
+  {
+    "name": "r1: parse: PAN id 0xffff",
+    "file": "src/otbr/parse.js",
+    "from": "panId <= 0xfffe",
+    "to": "panId <= 0xffff"
+  },
+  {
+    "name": "r1: Retry-After date without readable Date header",
+    "file": "src/otbr/client.js",
+    "from": "if (!Number.isFinite(at) || !Number.isFinite(date)) return null;",
+    "to": "if (!Number.isFinite(at)) return null;"
+  },
+  {
+    "name": "r1: threadAction: stopped app not refused",
+    "file": "src/app.js",
+    "from": "    if (this.stopped) return T.action.notSent({ code: CODES.LATE });\n    if (!this.config.allowThreadControl) {",
+    "to": "    if (false) return T.action.notSent({ code: CODES.LATE });\n    if (!this.config.allowThreadControl) {"
+  },
+  {
+    "name": "r1: load of /data unbounded",
+    "file": "src/app.js",
+    "from": "raw = await this.within(run, INTERVALS.STORE_TIMEOUT_MS);",
+    "to": "raw = await run;"
+  },
+  {
+    "name": "r1: save of /data unbounded",
+    "file": "src/app.js",
+    "from": "await this.within(this.store.save(serializeMemory(this.memory)), INTERVALS.STORE_TIMEOUT_MS);",
+    "to": "await this.store.save(serializeMemory(this.memory));"
+  },
+  {
+    "name": "r1: store retry timer: several at once",
+    "file": "src/app.js",
+    "from": "if (this.storeTimer !== undefined || this.stopped) return;",
+    "to": "if (this.stopped) return;"
+  },
+  {
+    "name": "r1: getConfig retry: no backoff",
+    "file": "src/app.js",
+    "from": "INTERVALS.CONFIG_RETRY_MS * 2 ** attempt,",
+    "to": "INTERVALS.CONFIG_RETRY_MS,"
+  },
+  {
+    "name": "r1: accept: new device not discovered",
+    "file": "src/app.js",
+    "from": "    if (changed) await this.publishDiscovery();",
+    "to": "    void 0;"
+  },
+  {
+    "name": "r1: readOnce: reads even if an action started",
+    "file": "src/app.js",
+    "from": "if (gen !== this.gen || this.stopped || !this.running || this.action) return;",
+    "to": "if (gen !== this.gen || this.stopped || !this.running) return;"
+  },
+  {
+    "name": "r1: tick: loop reads during an action",
+    "file": "src/app.js",
+    "from": "    if (this.action) return;\n    if (this.dueIn",
+    "to": "    if (false) return;\n    if (this.dueIn"
+  },
+  {
+    "name": "r1: applyMemory: pause of another address applied",
+    "file": "src/app.js",
+    "from": "if (p && p.key === this.key && p.until > now) {",
+    "to": "if (p && p.until > now) {"
+  },
+  {
+    "name": "r1: deviceCreated: any device",
+    "file": "src/app.js",
+    "from": "if (!this.baId || device?.external_id !== deviceIds(this.gladys, this.baId).device) return;",
+    "to": "if (!this.baId) return;"
+  },
+  {
+    "name": "r1: store: pause cap removed",
+    "file": "src/store.js",
+    "from": "until: Math.min(pause.until, now + INTERVALS.PAUSE_MAX_MS)",
+    "to": "until: pause.until"
+  },
+  {
+    "name": "r1: store: future attempt kept",
+    "file": "src/store.js",
+    "from": "lastAttemptAt: finite(last) ? Math.min(last, now) : 0",
+    "to": "lastAttemptAt: finite(last) ? last : 0"
+  },
+  {
+    "name": "r1: readNode: ba-id failure swallowed",
+    "file": "src/app.js",
+    "from": "      if (!(err?.code === CODES.HTTP && err.status === 404))\n        throw Object.assign(err, { secondary: true });",
+    "to": "      void 0;"
+  },
+  {
+    "name": "r1: runAction: no border agent id accepted",
+    "file": "src/app.js",
+    "from": "    if (!node.baId) return T.action.noBaId;",
+    "to": "    void 0;"
+  },
+  {
+    "name": "r1: deadline counted after the read, not from the click",
+    "file": "src/app.js",
+    "from": "const sendBy = start + SEND_BY_MS;",
+    "to": "const sendBy = this.monotonic() + SEND_BY_MS;"
+  },
+  {
+    "name": "r1: onSetValue accepts silently",
+    "file": "src/handlers.js",
+    "from": "    throw new Error('Read-only device: use the actions of the configuration screen');",
+    "to": "    return;"
+  },
+  {
+    "name": "r1: redirect on PUT treated as no answer",
+    "file": "src/app.js",
+    "from": "      if (err?.code === CODES.HTTP || err?.code === CODES.REDIRECT) {",
+    "to": "      if (err?.code === CODES.HTTP) {"
+  },
+  {
+    "name": "r1: connected: status/transport not forgotten",
+    "file": "src/app.js",
+    "from": "    this.lastStatus = null;\n    this.transport = null;\n    try {",
+    "to": "    try {"
+  },
+  {
+    "name": "r1: pause: no maximum",
+    "file": "src/app.js",
+    "from": "      INTERVALS.PAUSE_MIN_MS,\n      INTERVALS.PAUSE_MAX_MS,",
+    "to": "      INTERVALS.PAUSE_MIN_MS,\n      Infinity,"
+  },
+  {
+    "name": "r1: action budget of the checks removed",
+    "file": "src/app.js",
+    "from": "if (this.monotonic() + delay + INTERVALS.READ_TIMEOUT_MS > start + ACTION_BUDGET_MS) break;",
+    "to": "void 0;"
+  },
+  {
+    "name": "r1: runAction: does not wait for the cut reading",
+    "file": "src/app.js",
+    "from": "    await this.poll?.net;\n",
+    "to": "    void 0;\n"
+  },
+  {
+    "name": "r1: address changed: old device not marked unreachable",
+    "file": "src/app.js",
+    "from": "      if (old) await this.publishTransport(old, 'unreachable');",
+    "to": "      void old;"
+  },
+  {
+    "name": "I1: config freshness not checked at the click",
+    "file": "src/app.js",
+    "from": "    if (!this.configFresh) {\n      this.confirm = null;\n      return T.action.configNotRead;\n    }",
+    "to": "    void 0;"
+  },
+  {
+    "name": "I1: config not marked stale at a reconnection",
+    "file": "src/app.js",
+    "from": "    // no Thread action, and a first click is forgotten.\n    this.configFresh = false;",
+    "to": "    // no Thread action, and a first click is forgotten.\n    void 0;"
+  },
+  {
+    "name": "I1: config not marked stale at a disconnection",
+    "file": "src/app.js",
+    "from": "    this.running = false;\n    this.configFresh = false;",
+    "to": "    this.running = false;"
+  },
+  {
+    "name": "m1: port 80 typed read as the default",
+    "file": "src/config.js",
+    "from": "port = url.port ? Number(url.port) : typed ? parsePort(typed[1]) : null;",
+    "to": "port = url.port ? Number(url.port) : null;"
+  },
+  {
+    "name": "m2: outcome kept under the current address",
+    "file": "src/app.js",
+    "from": "    const action = { key, kind, outcome, at: this.now() };",
+    "to": "    const action = { key: this.key, kind, outcome, at: this.now() };"
+  },
+  {
+    "name": "m3: click 429 no pause",
+    "file": "src/app.js",
+    "from": "      if (isPause(err) && !err.secondary && gen === this.gen) await this.setPause(err);",
+    "to": "      void 0;"
+  },
+  {
+    "name": "m3: PUT error no follow-up",
+    "file": "src/app.js",
+    "from": "        // An error of the router may come after Thread changed: read again.\n        this.followUp(INTERVALS.FOLLOW_UP_MS);",
+    "to": "        void 0;"
+  },
+  {
+    "name": "m5: restart status without the delay",
+    "file": "src/app.js",
+    "from": "wait > 0 ? T.status.waitingIn(wait) : T.status.waiting",
+    "to": "T.status.waiting"
+  },
+  {
+    "name": "m6: action waits for the publication",
+    "file": "src/app.js",
+    "from": "    await this.poll?.net;\n",
+    "to": "    await this.poll?.done;\n"
+  },
+  {
+    "name": "m7: recordAction unbounded",
+    "file": "src/app.js",
+    "from": "    await this.within(this.doRecordAction(key, baId, kind, outcome), RECORD_MS).catch(() =>",
+    "to": "    await Promise.resolve(this.doRecordAction(key, baId, kind, outcome)).catch(() =>"
   }
 ]

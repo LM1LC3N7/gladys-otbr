@@ -59,8 +59,9 @@ qui répondrait à la même adresse ne soit jamais pris pour celui-ci.
   (`192.168.1.30:8081`, `[fd00::30]:8081`). `http://` peut être saisi ;
   `https://` est refusé (l’API REST n’en a pas).
 - **Rafraîchissement** : 1, 5 (par défaut), 15 ou 30 minutes. Le bouton de
-  test, l’enregistrement du formulaire, une reconnexion à Gladys ou un
-  redémarrage ne lisent jamais plus tôt (l’heure de la dernière lecture est
+  test, l’enregistrement du formulaire avec la même adresse, une reconnexion à
+  Gladys ou un redémarrage ne lisent jamais plus tôt (une nouvelle adresse est
+  lue tout de suite) (l’heure de la dernière lecture est
   gardée dans `/data`, quand `/data` est lisible) ; la fin d’une action Thread avance une lecture.
 - **Autoriser les actions Thread** (désactivé par défaut) : voir plus bas.
 
@@ -134,8 +135,10 @@ que Thread soit réactivé. Donc :
 
   Le résultat (sauf « Rien envoyé ») est gardé comme « Last action » (et dans
   `/data`), et une lecture suit : 1 seconde après une action confirmée,
-  20 secondes après « pas encore appliqué » ou « sans confirmation » (aucune
-  après un refus du routeur de bordure).
+  20 secondes après « pas encore appliqué », « sans confirmation » ou un refus
+  du routeur de bordure (une erreur peut venir après le changement de Thread).
+  Un 429 ou 5xx répondu à la lecture d’un clic met en pause comme celui d’une
+  lecture.
 
 - une action à la fois ; une lecture en cours est coupée par une action.
 
@@ -143,6 +146,9 @@ Chaque refus d’une action, et la liste de ce qui la fait refuser :
 
 - « Autoriser les actions Thread » désactivé (aussi quand il est désactivé
   entre les deux clics, ou pendant l’écriture de la requête) ;
+- la configuration pas encore relue depuis Gladys après une reconnexion
+  (l’option a pu changer entre-temps ; vérifié aussi pendant l’écriture de la
+  requête) ;
 - l’adresse du routeur de bordure invalide ;
 - une autre action Thread en cours ;
 - une pause demandée par le routeur de bordure (HTTP 429 ou 5xx sur `/node`)

@@ -522,7 +522,7 @@ test('the router read too slowly: the PUT never leaves past its deadline (20 s a
   await ctx.act('disable_thread');
   ctx.otbr.latencyMs = 21 * SECOND;
   const message = await ctx.act('disable_thread');
-  assert.match(message.en, /^Nothing sent: the border router was read too slowly/);
+  assert.match(message.en, /^Nothing sent: more than 20 s passed since the click/);
   assert.equal(puts(ctx.otbr), 0);
   assert.equal(ctx.otbr.role, 'leader');
   // At 19 s, it leaves.
@@ -761,4 +761,299 @@ test('a Retry-After shorter than 60 s still pauses 60 s', async (t) => {
   assert.equal(reads(ctx.otbr), 1);
   await ctx.wait(2 * SECOND);
   assert.equal(reads(ctx.otbr), 2);
+});
+
+// --- Review r1 ---------------------------------------------------------------------
+
+test('I1: the configuration not read again after a reconnection: no Thread action', async (t) => {
+  // By call: the SDK's own read at connect(), the app's; after the reconnection
+  // the SDK's own read, then the app's fails (the option was unticked meanwhile).
+  const plan = ['ok', 'ok', 'ok', 'fail'];
+  let call = 0;
+  const ctx = await setup({
+    connect: false,
+    getConfig: async () => {
+      if (plan[call++] === 'fail') throw new Error('down');
+      return { host: HOST, allow_thread_control: call <= 2 };
+    },
+  });
+  t.after(() => ctx.app.stop());
+  await ctx.gladys.connect();
+  await ctx.wait(0);
+  assert.match((await ctx.act('disable_thread')).en, /Click again/);
+  await ctx.gladys.disconnect();
+  await ctx.gladys.connect();
+  await ctx.wait(0);
+  assert.match(status(ctx.gladys).message.en, /could not be read from Gladys/);
+  const sent = ctx.otbr.sent.length;
+  for (let i = 0; i < 2; i += 1) {
+    const message = await ctx.act('disable_thread');
+    assert.match(message.en, /^Refused: the configuration was not read again.*Nothing sent/);
+  }
+  assert.equal(ctx.otbr.sent.length, sent, 'refused at the click, nothing read');
+  assert.equal(puts(ctx.otbr), 0);
+  assert.equal(ctx.otbr.role, 'leader');
+});
+
+test('I1: disconnected from Gladys while the PUT connects: nothing sent', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  t.after(() => ctx.app.stop());
+  await ctx.act('disable_thread');
+  ctx.otbr.putConnectMs = 2 * SECOND;
+  const pending = ctx.gladys.fake.action('disable_thread', {});
+  await ctx.wait(500);
+  ctx.app.pause();
+  const message = (await ctx.drive(pending, 500)).data.message;
+  assert.match(message.en, /Nothing sent: “Allow Thread actions” was turned off meanwhile/);
+  assert.equal(puts(ctx.otbr), 0);
+});
+
+test('I2: the address changed: the device of the old router is no longer "local"', async (t) => {
+  const ctx = await setup();
+  t.after(() => ctx.app.stop());
+  assert.equal(badge(ctx.gladys).transport, 'local');
+  ctx.otbr.routes['GET /node'] = () => {
+    throw new OtbrError(CODES.UNREACHABLE, 'ECONNREFUSED', { notSent: true });
+  };
+  await ctx.gladys.fake.configUpdated({ host: '192.168.1.99' });
+  await ctx.wait(0);
+  assert.equal(badge(ctx.gladys).transport, 'unreachable');
+});
+
+test('a 500 or a 502 on /node pauses as a 503 does; a Retry-After beyond 6 h is capped', async (t) => {
+  for (const code of [500, 502]) {
+    const store = memoryStore();
+    const ctx = await setup({ store, connect: false });
+    t.after(() => ctx.app.stop());
+    ctx.otbr.routes['GET /node'] = () => ({ status: code });
+    await ctx.gladys.connect();
+    await ctx.wait(0);
+    assert.equal(store.data.pause?.status, code, String(code));
+  }
+  const store = memoryStore();
+  const ctx = await setup({ store, connect: false });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.routes['GET /node'] = () => ({ status: 429, headers: { 'retry-after': '999999' } });
+  await ctx.gladys.connect();
+  await ctx.wait(0);
+  assert.equal(store.data.pause.until, T0 + 6 * HOUR);
+});
+
+test('a pause kept for another address does not hold this one at a restart', async (t) => {
+  const store = memoryStore({
+    pause: { key: 'http://192.168.1.99:8081', until: T0 + 5 * HOUR, status: 503 },
+  });
+  const ctx = await setup({ store });
+  t.after(() => ctx.app.stop());
+  assert.equal(reads(ctx.otbr), 1);
+});
+
+test('the click reads 429/5xx: a pause, the second click refused without a request', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.routes['GET /node'] = () => ({ status: 429, headers: { 'retry-after': '600' } });
+  const first = await ctx.act('disable_thread');
+  assert.match(first.en, /could not be read \(HTTP error 429\)/);
+  const sent = ctx.otbr.sent.length;
+  const second = await ctx.act('disable_thread');
+  assert.match(second.en, /^Refused: the border router asked to wait \(HTTP 429\)/);
+  assert.equal(ctx.otbr.sent.length, sent);
+});
+
+test('a PUT answered 500 or redirected: "refused", read again 20 s later', async (t) => {
+  for (const status of [500, 302]) {
+    const ctx = await setup({ config: ALLOW });
+    t.after(() => ctx.app.stop());
+    ctx.otbr.routes['PUT /node/state'] = () => ({ status });
+    await ctx.act('disable_thread');
+    const message = await ctx.act('disable_thread');
+    assert.equal(message.en, `Refused by the border router (HTTP ${status}).`);
+    const before = reads(ctx.otbr);
+    await ctx.wait(21 * SECOND);
+    assert.equal(reads(ctx.otbr), before + 1, `follow-up after ${status}`);
+  }
+});
+
+test('the outcome is kept under the address of the click, even if it changes meanwhile', async (t) => {
+  const store = memoryStore();
+  const ctx = await setup({ config: ALLOW, store });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.apply = false;
+  await ctx.act('disable_thread');
+  const pending = ctx.gladys.fake.action('disable_thread', {});
+  await ctx.wait(500);
+  await ctx.gladys.fake.configUpdated({ host: '192.168.1.31', allow_thread_control: true });
+  await ctx.drive(pending, 500);
+  assert.equal(puts(ctx.otbr), 1);
+  assert.equal(store.data.lastAction.key, KEY);
+});
+
+test('a stopped app: a click sends no request at all', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  await ctx.app.stop();
+  t.after(() => ctx.app.stop());
+  const sent = ctx.otbr.sent.length;
+  const ack = await ctx.gladys.fake.action('disable_thread', {});
+  assert.equal(ack.data.message.en, 'Nothing sent (too late to send).');
+  assert.equal(ctx.otbr.sent.length, sent);
+});
+
+test('a router without a border agent id at both clicks: nothing sent', async (t) => {
+  const ctx = await setup({ config: ALLOW, connect: false });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.baId = null;
+  ctx.otbr.routes['GET /node/ba-id'] = () => ({ status: 404 });
+  await ctx.gladys.connect();
+  await ctx.wait(0);
+  for (let i = 0; i < 2; i += 1) {
+    assert.match((await ctx.act('disable_thread')).en, /does not give its border agent ID/);
+  }
+  assert.equal(puts(ctx.otbr), 0);
+});
+
+test('the checks after the PUT end within the budget of the button (45 s)', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.apply = false;
+  await ctx.act('disable_thread');
+  // The PUT leaves at 18 s and is answered at 28 s: one check only (at 29 s).
+  ctx.otbr.putConnectMs = 18 * SECOND;
+  ctx.otbr.routeLatency['PUT /node/state'] = 10 * SECOND;
+  const started = ctx.clock.now;
+  const message = await ctx.act('disable_thread', 500);
+  assert.match(message.en, /not applied yet/);
+  assert.equal(ctx.otbr.count('GET', '/node/state'), 1);
+  assert.ok(ctx.clock.now - started <= 40 * SECOND, `${ctx.clock.now - started} ms`);
+});
+
+test('an action waits for the requests of the reading it cuts: one request at a time', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.latencyMs = 3 * SECOND;
+  await ctx.wait(POLL);
+  assert.ok(ctx.app.poll, 'a reading in flight');
+  ctx.otbr.peak = ctx.otbr.inflight;
+  await ctx.act('disable_thread', 500);
+  assert.equal(ctx.otbr.peak, 1);
+});
+
+test('an action is not held by the publication of the reading it follows', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.routers = 7;
+  let release;
+  ctx.gladys.publishChangedStates = () => new Promise((resolve) => (release = resolve));
+  await ctx.wait(POLL);
+  assert.ok(ctx.app.poll && release, 'the reading is publishing');
+  const started = ctx.clock.now;
+  const message = await ctx.act('disable_thread', 100);
+  assert.match(message.en, /Click again/);
+  assert.ok(ctx.clock.now - started < 1000);
+  release({ success: true, count: 1 });
+});
+
+test('no reading while an action runs: the loop does not start one', async (t) => {
+  const store = memoryStore();
+  const ctx = await setup({ store, config: { ...ALLOW, poll_interval: '1' } });
+  t.after(() => ctx.app.stop());
+  ctx.otbr.latencyMs = 5 * SECOND;
+  await ctx.wait(MINUTE - 2 * SECOND);
+  const attempt = store.data.lastAttemptAt;
+  const pending = ctx.gladys.fake.action('disable_thread', {});
+  await ctx.wait(4 * SECOND);
+  assert.equal(store.data.lastAttemptAt, attempt, 'the loop did not start a reading');
+  await ctx.drive(pending, 500);
+});
+
+test('no reading while an action runs: a reading waiting for /data reads nothing after', async (t) => {
+  const store = memoryStore();
+  const ctx = await setup({ store, config: { ...ALLOW, poll_interval: '1' } });
+  t.after(() => ctx.app.stop());
+  store.hangSave = true;
+  await ctx.wait(MINUTE);
+  assert.equal(reads(ctx.otbr), 1, 'the reading waits for /data (3 s)');
+  ctx.otbr.latencyMs = 5 * SECOND;
+  const pending = ctx.gladys.fake.action('disable_thread', {});
+  await ctx.drive(pending, 500);
+  assert.equal(reads(ctx.otbr), 2, 'only the read of the action');
+  assert.equal(ctx.otbr.peak, 1);
+  store.hangSave = false;
+});
+
+test('/data writes hanging: readings and actions go on, each write bounded', async (t) => {
+  const store = memoryStore();
+  const ctx = await setup({ config: ALLOW, store });
+  t.after(() => ctx.app.stop());
+  store.hangSave = true;
+  await ctx.wait(POLL);
+  await ctx.wait(3 * SECOND);
+  assert.equal(reads(ctx.otbr), 2);
+  await ctx.act('disable_thread');
+  assert.equal((await ctx.act('disable_thread')).en, 'Thread disabled (confirmed).');
+  store.hangSave = false;
+});
+
+test('/data unreadable: one timer to read it again, however many starts', async (t) => {
+  const store = memoryStore(null, { unreadable: true });
+  const ctx = await setup({ store });
+  t.after(() => ctx.app.stop());
+  await ctx.gladys.fake.configUpdated({ host: HOST });
+  await ctx.gladys.fake.configUpdated({ host: HOST });
+  await ctx.wait(0);
+  const loads = store.loads;
+  await ctx.wait(10 * SECOND);
+  assert.equal(store.loads, loads + 1);
+});
+
+test('the creation of another device publishes nothing', async (t) => {
+  const ctx = await setup();
+  t.after(() => ctx.app.stop());
+  const count = ctx.gladys.fake.states.length;
+  await ctx.gladys.fake.deviceCreated(device(OTHER_BA_ID));
+  await ctx.wait(0);
+  assert.equal(ctx.gladys.fake.states.length, count);
+});
+
+test('a reconnection sends the badge again at the next reading', async (t) => {
+  const ctx = await setup();
+  t.after(() => ctx.app.stop());
+  const count = ctx.gladys.fake.transports.length;
+  await ctx.gladys.disconnect();
+  await ctx.gladys.connect();
+  await ctx.wait(POLL);
+  assert.equal(ctx.gladys.fake.transports.length, count + 1);
+});
+
+test('after a restart, the status says when the first reading comes', async (t) => {
+  const store = memoryStore({ lastAttemptAt: T0 - MINUTE, attemptKey: KEY });
+  const ctx = await setup({ store });
+  t.after(() => ctx.app.stop());
+  assert.equal(reads(ctx.otbr), 0);
+  assert.match(status(ctx.gladys).message.en, /next reading in 4 min/);
+});
+
+test('the outcome of an action is kept within 3 s even if Gladys does not answer', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  t.after(() => ctx.app.stop());
+  await ctx.act('disable_thread');
+  ctx.gladys.publishChangedStates = () => new Promise(() => {});
+  const started = ctx.clock.now;
+  const message = await ctx.act('disable_thread', 500);
+  assert.equal(message.en, 'Thread disabled (confirmed).');
+  assert.ok(ctx.clock.now - started <= 10 * SECOND, `${ctx.clock.now - started} ms`);
+});
+
+test('I1: a new "connected" without a disconnection also forgets the configuration until read', async (t) => {
+  const ctx = await setup({ config: ALLOW });
+  t.after(() => ctx.app.stop());
+  await ctx.act('disable_thread');
+  // The configuration being read again (slow): no action meanwhile.
+  let release;
+  ctx.gladys.getConfig = () => new Promise((resolve) => (release = resolve));
+  const starting = ctx.app.startFromGladys();
+  const message = await ctx.act('disable_thread');
+  release({ host: HOST, ...ALLOW });
+  await starting;
+  assert.match(message.en, /^Refused: the configuration was not read again/);
+  assert.equal(puts(ctx.otbr), 0);
 });

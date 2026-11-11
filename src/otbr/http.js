@@ -114,11 +114,6 @@ export function otbrRequest(
           },
         },
         (res) => {
-          // An answer before the request was written: never accepted.
-          if (!sent) {
-            finish(new OtbrError(CODES.BAD_ANSWER, 'Answer before the request', { notSent: true }));
-            return;
-          }
           const declared = Number(res.headers['content-length']);
           if (Number.isFinite(declared) && declared > maxBytes) {
             finish(new OtbrError(CODES.TOO_LARGE, `Answer above ${maxBytes} bytes`));

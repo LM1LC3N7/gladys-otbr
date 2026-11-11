@@ -28,6 +28,10 @@ up to date at the end of every milestone.
       agent id, option checked at the click, after the fresh read and in
       `beforeSend`, a 20 s send deadline, the outcome read back (confirmed /
       not applied yet / without confirmation / refused / nothing sent).
+- [x] **Review r1** (2026-11-11): actions refused until the configuration
+      is read again after a reconnection; old device unreachable after an
+      address change; 8 minor points; tests for every surviving mutant of the
+      reviewer (merged into `scripts/mutants.json`).
 - [ ] Count of the Thread end devices (see Decisions).
 - [ ] Feedback of users with a real border router (Home Assistant add-on,
       Raspberry Pi with an RCP dongle).
@@ -74,6 +78,14 @@ up to date at the end of every milestone.
   `spinel+hdlc+forkpty:///ot/ot-rcp?forkpty-arg=1`, `FIREWALL=0 NAT64=0`,
   `--cap-add NET_ADMIN --device /dev/net/tun`. The scenarios ran outside the
   repository (not in CI).
+
+- **Equivalent mutants left out** of `scripts/mutants.json` (review r1):
+  `runAction` not re-checking the generation after its read (`beforeSend`
+  does it right before the first byte), a numeric role read as
+  `ROLES[value] ?? null` (same result), the persisted pause lifted only with
+  the RAM one (both are set together). The dead branch "answer before the
+  request" of `src/otbr/http.js` was removed (the request is written at
+  `connect`, before any answer can be read).
 
 ## Next
 

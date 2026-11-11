@@ -56,7 +56,8 @@ border router answering at the same address is never taken for this one.
   `[fd00::30]:8081`). `http://` may be typed; `https://` is refused (the REST
   API has none).
 - **Refresh**: 1, 5 (default), 15 or 30 minutes. The test button, a save of
-  the form, a reconnection to Gladys or a restart never read sooner (the time
+  the form with the same address, a reconnection to Gladys or a restart never
+  read sooner (a new address is read at once) (the time
   of the last reading is kept in `/data`, when `/data` can be read); the end of a Thread action brings
   one reading forward.
 - **Allow Thread actions** (off by default): see below.
@@ -126,8 +127,9 @@ enabled again. So:
 
   The outcome (but "Nothing sent") is kept as "Last action" (and in
   `/data`), and a reading follows: 1 second after a confirmed action,
-  20 seconds after "not applied yet" or "without confirmation" (none after a
-  refusal of the border router).
+  20 seconds after "not applied yet", "without confirmation" or a refusal
+  of the border router (an error may come after Thread changed). A 429 or
+  5xx answered to the reading of a click pauses like one of a reading.
 
 - one action at a time; a reading in progress is cut by an action.
 
@@ -135,6 +137,9 @@ Every refusal of an action, and the list of what makes it refuse:
 
 - "Allow Thread actions" off (also when it is turned off between the two
   clicks, or while the request is being written);
+- the configuration not read again from Gladys since a reconnection (the
+  option may have changed meanwhile; also while the request is being
+  written);
 - the address of the border router not valid;
 - another Thread action running;
 - a pause asked by the border router (HTTP 429 or 5xx on `/node`) not over;

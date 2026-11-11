@@ -66,8 +66,8 @@
         "fr": "Rafraîchissement"
       },
       "description": {
-        "en": "How often the border router is read. The test button, a save of the form or a restart do not read sooner; the end of a Thread action brings one reading forward.",
-        "fr": "Fréquence de lecture du routeur de bordure. Le bouton de test, l’enregistrement du formulaire ou un redémarrage ne lisent pas plus tôt ; la fin d’une action Thread avance une lecture."
+        "en": "How often the border router is read. The test button, a save of the form with the same address or a restart do not read sooner (a new address is read at once); the end of a Thread action brings one reading forward.",
+        "fr": "Fréquence de lecture du routeur de bordure. Le bouton de test, l’enregistrement du formulaire avec la même adresse ou un redémarrage ne lisent pas plus tôt (une nouvelle adresse est lue tout de suite) ; la fin d’une action Thread avance une lecture."
       },
       "required": true,
       "default": "5",

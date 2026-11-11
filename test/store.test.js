@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { closeSync, constants, openSync } from 'node:fs';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,8 +40,21 @@ test('not JSON, too large, not an object: unreadable (never a first start)', asy
 });
 
 test('a FIFO in place of the file or of its temporary: refused at once, never waited for', async (t) => {
-  const d = await dir(t);
+  const d = await mkdtemp(join(tmpdir(), 'otbr-store-'));
   const path = join(d, 'state.json');
+  // A store that waited on a FIFO (a regression) would hold a thread for
+  // ever: each FIFO is opened read-write here at the end, which releases
+  // such an open, before the directory goes. The test fails, never hangs.
+  t.after(async () => {
+    for (const fifo of [path, `${path}.tmp`]) {
+      try {
+        closeSync(openSync(fifo, constants.O_RDWR | constants.O_NONBLOCK));
+      } catch {
+        // not a FIFO (any more)
+      }
+    }
+    await rm(d, { recursive: true, force: true });
+  });
   execFileSync('mkfifo', [path]);
   const store = fileStore(path);
   const started = performance.now();
